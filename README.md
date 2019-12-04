@@ -46,7 +46,6 @@ Role variables
 | ``primary`` | string  | define the primary role of switch inventory name which is planned  | dellos10 |
 | ``secondary`` | string  | define the secondary role of switch inventory name which is planned  | dellos10 |
 
-
 Connection variables
 --------------------
 
@@ -68,7 +67,7 @@ Ansible Dell EMC Networking roles require connection information to establish co
 Dependencies
 ------------
 
-*xmltodict*  library should be installed to convert show command output in dict format from xml. To install the package use *pip install xmltodict* command.
+*xmltodict* library should be installed to convert show command output in dict format from xml. To install the package use ``pip install xmltodict`` command.
 
 *ansible-role-dellos-fabric-summary* role should be included to query system network summary information. 
 
@@ -104,6 +103,8 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
 ----------------------------
 **Sample input for wiring validation**
 
+ 
+    intended_neighbors:
       - source_switch: site1-spine2
         source_port: ethernet1/1/5
         dest_port: ethernet1/1/29
@@ -292,5 +293,6 @@ Execute the playbook and Examine the results:
     "msg": {
         "results": "There is no MTU mistmatch between neighbors"
     }
+
 
 (c) Copyright 2019 Dell Inc. or its subsidiaries. All Rights Reserved.
