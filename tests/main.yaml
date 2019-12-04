@@ -1,0 +1,7 @@
+---
+- name: setup network validation
+  hosts: localhost
+  gather_facts: False
+  connection: local
+  roles:
+     - ansible-role-dellos-network-validation

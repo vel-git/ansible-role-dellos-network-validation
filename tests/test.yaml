@@ -1,0 +1,15 @@
+---
+- name: setup network validation
+  hosts: localhost
+  gather_facts: False
+  connection: local
+  tasks:
+    - import_role:
+        name: ansible-role-dellos-network-validation
+        tasks_from: wiring_validation.yaml
+    - import_role:
+        name: ansible-role-dellos-network-validation
+        tasks_from: bgp_validation.yaml
+    - import_role:
+        name: ansible-role-dellos-network-validation
+        tasks_from: vlt_validation.yaml
