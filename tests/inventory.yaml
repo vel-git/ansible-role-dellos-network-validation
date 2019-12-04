@@ -1,0 +1,14 @@
+site1-spine1 ansible_host=10.11.180.21 ansible_ssh_user=admin ansible_ssh_pass=admin ansible_network_os=dellos10
+site1-spine2 ansible_host=10.11.180.22 ansible_ssh_user=admin ansible_ssh_pass=admin ansible_network_os=dellos10
+site2-spine2 ansible_host=10.11.180.23 ansible_ssh_user=admin ansible_ssh_pass=admin ansible_network_os=dellos10
+site2-spine1 ansible_host=10.11.180.24 ansible_ssh_user=admin ansible_ssh_pass=admin ansible_network_os=dellos10
+
+[spine]
+site1-spine1
+site1-spine2
+site2-spine1
+site2-spine2
+
+[LeafAndSpineSwitch:children]
+spine
+
