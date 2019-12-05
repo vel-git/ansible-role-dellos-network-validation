@@ -1,0 +1,11 @@
+---
+# Sample variables for dellos10 device
+cli:
+  host: "{{ ansible_host }}"
+  username: "{{ dellos10_cli_user | default('admin') }}"
+  password: "{{ dellos10_cli_pass | default('admin') }}"
+  timeout: 300
+
+ansible_ssh_user: admin
+ansible_ssh_pass: admin
+ansible_network_os: dellos10
