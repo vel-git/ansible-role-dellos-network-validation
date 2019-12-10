@@ -14,7 +14,7 @@ This roles is used to verify Network Validation. It validates networking feature
 Installation
 ------------
 
-    ansible-galaxy install Dell-Networking.dellos-network-validation
+    ansible-galaxy install Dell-Networking.dellos_network_validation
 
 Role variables
 --------------

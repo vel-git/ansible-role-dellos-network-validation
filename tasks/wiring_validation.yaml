@@ -6,8 +6,9 @@
     provider: "{{ hostvars[item].cli }}"
   with_items: "{{ groups['all'] }}"
   register: show_lldp
-- set_fact:
-     output_lldp:  "{{ output_lldp|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_lldp': item.stdout}] }}"
+- name: "set facts to form lldp db"
+  set_fact:
+    output_lldp: "{{ output_lldp|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_lldp': item.stdout}] }}"
   loop: "{{ show_lldp.results }}"
 - debug: var=output_lldp
 - name: "Get Dell EMC OS10 Show system"
