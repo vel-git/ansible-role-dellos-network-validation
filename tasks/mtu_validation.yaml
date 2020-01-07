@@ -22,9 +22,11 @@
   import_role:
     name: ansible-role-dellos-fabric-summary
   register: show_system_network_summary
-- debug: var=show_system_network_summary
 - name: "call lib to process"
   mtu_validate:
     show_lldp_neighbors_list: "{{ output_mtu }}"
     show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
     show_ip_intf_brief: "{{ show_ip_intf_list.results }}"
+  register: mtu_validation
+- name: "debug mtu validation result"
+  debug: var=mtu_validation.msg.results

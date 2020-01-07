@@ -40,3 +40,5 @@
     show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
     intended_vlt_pairs: "{{ intended_vlt_pairs }}"
   register: show_vlt_info
+- name: "debug vlt validation result"
+  debug: var=show_vlt_info.msg.results

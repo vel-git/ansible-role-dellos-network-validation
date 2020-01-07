@@ -1,15 +1,15 @@
-ansible-role-dellos-network-validation 
-======================================
+dell-networking.dellos_network_validation
+=========================
 
-This roles is used to verify Network Validation. It validates networking features of wiring connection, bgp neighbors, MTU between neighbors and VLT pair with Dell EMC Networking OS10 switches. 
+This roles is used to verify network validation. It validates network features of a wiring connection, BGP neighbors, the MTU between neighbors, and VLT pairing with Dell EMC SmartFabric OS10 switches.
 
-- **Wiring Validation** is performed based on LLDP neighbor establishment. The intended neighbor input model defined by the user in ``group_var/all`` which is compared with actual lldp neighbor and report is generated if there is an mismatch with intended neighbors. 
+- **Wiring validation** — based on the LLDP neighbor establishment; the intended neighbor input model is defined by the _group_var/all_ user which is compared with the actual LLDP neighbor; report is generated if there is any mismatch with the intended neighbors.
 
-- **BGP Validation** is performed based on bgp neighbor state establishment. The report is generated if the bgp neighbor state is not in established state.
+- **BGP validation** — based on the BGP neighbor state establishment; report is generated if the BGP neighbor state is not in an established state.
 
-- **MTU Validation** is performed based on interface MTU, report is generated if there is an MTU mismatch between lldp neighbors.
+- **MTU validation** — based on the interface MTU; report is generated if there is an MTU mismatch between LLDP neighbors.
 
-- **VLT Validation** is performed based on VLT info, report is generated if the backup VLT link is down or not present.
+- **VLT validation** — based on the VLT information; report is generated if the backup VLT link is down or not present.
 
 Installation
 ------------
@@ -25,56 +25,56 @@ Role variables
 
 | Key        | Type                      | Description                                             | Support               |
 |------------|---------------------------|---------------------------------------------------------|-----------------------|
-| ``intended_neighbors`` | list  | define topology details which is planned  | dellos10 |
-| ``source_switch`` | string  | define the source switch inventory name which is planned  | dellos10 |
-| ``source_port`` | string  | define the source port which is planned  | dellos10 |
-| ``dest_switch`` | string  | define the destination switch inventory name which is planned  | dellos10 |
-| ``dest_port`` | string  | define the destination port which is planned  | dellos10 |
+| ``intended_neighbors`` | list  | Define topology details planned  | dellos10 |
+| ``source_switch`` | string  | Define the source switch inventory name planned  | dellos10 |
+| ``source_port`` | string  | Define the source port planned  | dellos10 |
+| ``dest_switch`` | string  | Define the destination switch inventory name planned  | dellos10 |
+| ``dest_port`` | string  | Define the destination port planned  | dellos10 |
 
 **bgp_validation keys**
 
 | Key        | Type                      | Description                                             | Support               |
 |------------|---------------------------|---------------------------------------------------------|-----------------------|
-| ``intended_bgp_neighbors`` | list  | define topology details which is planned  | dellos10 |
-| ``source_switch`` | string  | define the source switch inventory name which is planned  | dellos10 |
+| ``intended_bgp_neighbors`` | list  | Define topology details planned  | dellos10 |
+| ``source_switch`` | string  | Define the source switch inventory name planned  | dellos10 |
 
 **vlt_validation keys**
 
 | Key        | Type                      | Description                                             | Support               |
 |------------|---------------------------|---------------------------------------------------------|-----------------------|
-| ``intended_vlt_pairs`` | list  | define topology details which is planned  | dellos10 |
-| ``primary`` | string  | define the primary role of switch inventory name which is planned  | dellos10 |
-| ``secondary`` | string  | define the secondary role of switch inventory name which is planned  | dellos10 |
+| ``intended_vlt_pairs`` | list  | Define topology details planned  | dellos10 |
+| ``primary`` | string  | Define the primary role of switch inventory name planned  | dellos10 |
+| ``secondary`` | string  | Define the secondary role of switch inventory name planned  | dellos10 |
 
 Connection variables
 --------------------
 
-Ansible Dell EMC Networking roles require connection information to establish communication with the nodes in your inventory. This information can exist in the Ansible *group_vars* or *host_vars* directories or inventory, or in the playbook itself.
+Ansible Dell EMC roles require connection information to establish communication with the nodes in your inventory. This information can exist in the Ansible _group_vars_ or _host_vars_ directories or inventory, or in the playbook itself.
 
 | Key         | Required | Choices    | Description                                         |
 |-------------|----------|------------|-----------------------------------------------------|
 | ``ansible_host`` | yes      |            | Specifies the hostname or address for connecting to the remote device over the specified transport |
-| ``ansible_port`` | no       |            | Specifies the port used to build the connection to the remote device; if value is unspecified, the ANSIBLE_REMOTE_PORT option is used; it defaults to 22 |
+| ``ansible_port`` | no       |            | Specifies the port used to build the connection to the remote device; if the value is unspecified, the ANSIBLE_REMOTE_PORT option is used; defaults to 22 |
 | ``ansible_ssh_user`` | no       |            | Specifies the username that authenticates the CLI login for the connection to the remote device; if value is unspecified, the ANSIBLE_REMOTE_USER environment variable value is used  |
-| ``ansible_ssh_pass`` | no       |            | Specifies the password that authenticates the connection to the remote device.  |
+| ``ansible_ssh_pass`` | no       |            | Specifies the password that authenticates the connection to the remote device  |
 | ``ansible_become`` | no       | yes, no\*   | Instructs the module to enter privileged mode on the remote device before sending any commands; if value is unspecified, the ANSIBLE_BECOME environment variable value is used, and the device attempts to execute all commands in non-privileged mode |
-| ``ansible_become_method`` | no       | enable, sudo\*   | Instructs the module to allow the become method to be specified for handling privilege escalation; if value is unspecified, the ANSIBLE_BECOME_METHOD environment variable value is used. |
-| ``ansible_become_pass`` | no       |            | Specifies the password to use if required to enter privileged mode on the remote device; if ``ansible_become`` is set to no this key is not applicable. |
-| ``ansible_network_os`` | yes      | dellos10, null\*  | This value is used to load the correct terminal and cliconf plugins to communicate with the remote device. |
+| ``ansible_become_method`` | no       | enable, sudo\*   | Instructs the module to allow the _become_ method to be specified for handling privilege escalation; if value is unspecified, the ANSIBLE_BECOME_METHOD environment variable value is used |
+| ``ansible_become_pass`` | no       |            | Specifies the password to use, if required, to enter privileged mode on the remote device; if `ansible_become` is set to no, this key is not applicable |
+| ``ansible_network_os`` | yes      | dellos10, null\*  | Value is used to load the correct terminal and cliconf plugins to communicate with the remote device |
 
 > **NOTE**: Asterisk (*) denotes the default value if none is specified.
 
 Dependencies
 ------------
 
-*xmltodict* library should be installed to convert show command output in dict format from xml. To install the package use ``pip install xmltodict`` command.
+The _xmltodict_ library should be installed to convert show command output in dictionary format from XML. To install the package, use `pip install xmltodict`.
 
-*ansible-role-dellos-fabric-summary* role should be included to query system network summary information. 
+The `dellos_fabric_summary` role must be included to query system network summary information.
 
 Example playbook
 ----------------
 
-This example uses the *ansible-role-dellos-network-validation* role to verify the network validations. It creates a *hosts* file with the switch details and corresponding variables.
+This example uses the `dell-networking.dellos_network_validation` role to verify network validations. It creates a *hosts* file with the switch details and corresponding variables.
 
 
 **Sample hosts file**
@@ -130,7 +130,7 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
         dest_port: ethernet1/1/29
         dest_switch: site1-spine3
 
-**Sample input for bgp validation:**
+**Sample input for bgp validation**
 
       intended_bgp_neighbors:
         - source_switch: site1-spine1
@@ -138,7 +138,7 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
         - source_switch: site1-spine2
           neighbor_ip: ["10.11.0.0","10.9.0.9","10.9.0.11","10.9.0.15"]
 
-**Sample input for vlt validation:**
+**Sample input for vlt validation**
 
       intended_vlt_pairs:
         - primary: site1-spine1
@@ -147,7 +147,7 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
           secondary: site2-spine2
 
 
-**Simple playbook to setup Network Validation**
+**Simple playbook to setup network validation**
 -----------------------------------------------
 
 **Sample playbook of ``validation.yaml`` to run complete validation**
@@ -172,7 +172,7 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
                 name: ansible-role-dellos-network-validation
                 tasks_from: wiring_validation.yaml
 
-**Sample playbook to run bgp validation**
+**Sample playbook to run BGP validation**
 
         ---
         - name: setup bgp validation
@@ -184,7 +184,7 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
                 name: ansible-role-dellos-network-validation
                 tasks_from: bgp_validation.yaml
 
-**Sample playbook to run vlt validation**
+**Sample playbook to run VLT validation**
 
         ---
         - name: setup vlt validation
@@ -196,7 +196,7 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
                 name: ansible-role-dellos-network-validation
                 tasks_from: vlt_validation.yaml
 
-**Sample playbook to run mtu validation**
+**Sample playbook to run MTU validation**
 
         ---
         - name: setup mtu validation
@@ -211,11 +211,11 @@ This example uses the *ansible-role-dellos-network-validation* role to verify th
 
 **Run**
 
-Execute the playbook and Examine the results:
+Execute the playbook and examine the results.
 
 ``ansible-playbook -i inventory.yaml validation.yaml``
 
-**Sample Output**
+**Sample output**
 -----------------
 **sample output of wiring validation**
 
@@ -238,7 +238,7 @@ Execute the playbook and Examine the results:
         }
     ]
 
-**sample output of bgp validation**
+**sample output of BGP validation**
 
     "results": [
          {
@@ -270,7 +270,7 @@ Execute the playbook and Examine the results:
          }
       ]
 
-**sample output of vlt validation**
+**sample output of VLT validation**
 
     "results": [
         {
@@ -295,4 +295,5 @@ Execute the playbook and Examine the results:
     }
 
 
-(c) Copyright 2019 Dell Inc. or its subsidiaries. All Rights Reserved.
+(c) 2019 Dell Inc. or its subsidiaries. All Rights Reserved.
+
