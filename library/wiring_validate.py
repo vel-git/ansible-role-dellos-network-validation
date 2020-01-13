@@ -32,38 +32,58 @@ options:
             - planned neighbours input from group_var to compare actual
         type: 'list',
         required: True
+    unreachable_hosts:
+        description:
+            - unreahable hosts
+        type: 'list',
+       required: True
 '''
 EXAMPLES = '''
 Copy below YAML into a playbook (e.g. play.yml) and run as follows:
 
 $ ansible-playbook -i inv play.yml
-name: show system Configuration
-hosts: localhost
-connection: local
+name: wiring validation
+hosts: LeafAndSpineSwitch
+connection: network_cli
 gather_facts: False
 tasks:
-- name: "Get Dell EMC OS10 Show lldp"
+- name: "Get Dell EMC OS10 wiring info"
   dellos10_command:
     commands:
       - command: "show lldp neighbors"
-    provider: "{{ hostvars[item].cli }}"
-  with_items: "{{ groups['all'] }}"
   register: show_lldp
-- local_action: copy content={{ show_lldp }} dest=show
-- set_fact:
-     output_lldp:  "{{ output_lldp|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_lldp': item.stdout}] }}"
-  loop: "{{ show_lldp.results }}"
-- debug: var=output_lldp
+- name: "set facts to form lldp db"
+  set_fact:
+    output_lldp:
+      "{{ output_lldp|default([])+ [{'host': hostvars[item].cli.host,
+         'inv_name': item, 'stdout_show_lldp': hostvars[item].show_lldp.stdout.0}]
+         if(hostvars[item].show_lldp is defined and
+         hostvars[item].show_lldp.failed == false) else output_lldp|default([]) }}"
+    lldp_failed_host:
+      "{{ lldp_failed_host|default([])+ [{'inv_name': item,
+          'host': hostvars[item].ansible_host}] if(hostvars[item].show_lldp is not defined
+          or hostvars[item].show_lldp.failed == true) else lldp_failed_host|default([]) }}"
+  loop: "{{ ansible_play_hosts_all }}"
+  run_once: true
 - name: "Get Dell EMC OS10 Show system"
   import_role:
     name: ansible-role-dellos-fabric-summary
   register: show_system_network_summary
-- debug: var=show_system_network_summary
 - name: call lib to process
   wiring_validate:
     show_lldp_neighbors_list: "{{ output_lldp }}"
     show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
     planned_neighbors: "{{ intended_neighbors }}"
+    unreachable_hosts: "{{ lldp_failed_host }}"
+  register: wiring_validation
+  run_once: true
+- name: "debug the wiring validation results"
+  debug: var=wiring_validation.msg.results
+  run_once: true
+- name: "debug the wiring validation failed host results"
+  debug: var=lldp_failed_host
+  when: lldp_failed_host is defined
+  run_once: true
 '''
 
 
@@ -73,6 +93,8 @@ class WiringValidation(object):
         self.show_lldp_neighbors_list = self.module.params['show_lldp_neighbors_list']
         self.show_system_network_summary = self.module.params['show_system_network_summary']
         self.planned_neighbors = self.module.params['planned_neighbors']
+        self.unreachable_hosts = self.module.params['unreachable_hosts']
+        self.unreachable_hosts_dict = OrderedDict()
         self.exit_msg = OrderedDict()
 
     def get_fields(self):
@@ -88,9 +110,22 @@ class WiringValidation(object):
             'planned_neighbors': {
                 'type': 'list',
                 'required': True
+            },
+            'unreachable_hosts': {
+                'type': 'list',
+                'required': True
             }
         }
         return spec_fields
+
+
+    def parse_unreachable_hosts_list(self):
+        unreachable_host_dict={}
+        for host_dict in self.unreachable_hosts:
+            inv_name = host_dict.get("inv_name")
+            host = host_dict.get("host")
+            unreachable_host_dict[inv_name]=host
+        return unreachable_host_dict
 
     # get switch inv name from mac
     def get_switch_inv_name_from_mac(self, mac):
@@ -100,6 +135,7 @@ class WiringValidation(object):
                 inv_name = show_system.get("inv_name")
                 break
         return inv_name
+
 
     # get service tag for switch
 
@@ -170,6 +206,7 @@ class WiringValidation(object):
             lldp_list = self.parse_lldp_output()
             actual_nbr = self.get_actual_neigbor(lldp_list)
             svc_tag_mac = self.get_service_tag_and_mac()
+            self.unreachable_hosts_dict = self.parse_unreachable_hosts_list()
             # Validate the planned neighbors with actual neighbors
             mismatch_list = list()
             for planned_neighbors in self.planned_neighbors:
@@ -216,10 +253,18 @@ class WiringValidation(object):
                                 planned_neighbors["error_type"] = "link-mismatch"
                                 break
                     if not bflag:
-                        reason = "link is not found for source switch: {},port: {}".format(
-                            planned_neighbors["source_switch"], planned_neighbors["source_port"])
+                        planned_source_switch = planned_neighbors["source_switch"]
+                        if planned_source_switch in self.unreachable_hosts_dict.keys():
+                            host = self.unreachable_hosts_dict.get(planned_source_switch)
+                            reason = "{}:{} is not reachable".format(
+                                      planned_source_switch,host)
+                            planned_neighbors["error_type"] = "not_reachable"
+ 
+                        else: 
+                            reason = "link is not found for source switch: {},port: {}".format(
+                                      planned_neighbors["source_switch"], planned_neighbors["source_port"])
+                            planned_neighbors["error_type"] = "link-missing"
                         planned_neighbors["reason"] = reason
-                        planned_neighbors["error_type"] = "link-missing"
                     mismatch_list.append(planned_neighbors)
 
             self.exit_msg.update({"results": mismatch_list})

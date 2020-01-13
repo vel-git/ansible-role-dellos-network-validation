@@ -30,15 +30,19 @@ options:
             - planned neighbours input from group_var to compare actual
         type: 'list',
         required: True
+    unreachable_hosts:
+        description:
+            - unreahable hosts
+        type: 'list',
        required: True
 '''
 EXAMPLES = '''
 Copy below YAML into a playbook (e.g. play.yml) and run as follows:
 
 $ ansible-playbook -i inv play.yml
-name: show system Configuration
-hosts: localhost
-connection: local
+name: bgp validation
+hosts: LeafAndSpineSwitch
+connection: network_cli
 gather_facts: False
 tasks:
   - name: "Get Dell EMC OS10 Show ip bgp summary"
@@ -46,31 +50,51 @@ tasks:
       commands:
         - command: "show ip bgp summary | display-xml"
         - command: "show ip interface brief | display-xml"
-      provider: "{{ hostvars[item].cli }}"
-    with_items: "{{ groups['all'] }}"
     register: show_bgp
-  - set_fact:
-       output_bgp:  "{{ output_bgp|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_bgp': item.stdout.0, 'stdout_show_ip': item.stdout.1}] }}"
-    loop: "{{ show_bgp.results }}"
-  - debug: var=output_bgp
-  - local_action: copy content={{ output_bgp }} dest=show
+  - name: "set fact to form bgp database"
+    set_fact:
+      output_bgp:
+        "{{ output_bgp|default([])+ [{'host': hostvars[item].cli.host, 'inv_name': item,
+            'stdout_show_bgp': hostvars[item].show_bgp.stdout.0,
+            'stdout_show_ip': hostvars[item].show_bgp.stdout.1}]
+            if(hostvars[item].show_bgp is defined and
+            hostvars[item].show_bgp.failed == false) else output_bgp|default([]) }}"
+      output_bgp_failed:
+        "{{ output_bgp_failed|default([])+ [{'inv_name': item,
+            'host': hostvars[item].ansible_host}]
+            if(hostvars[item].show_bgp is not defined or
+            hostvars[item].show_bgp.failed == true) else output_bgp_failed|default([])}}"
+    loop: "{{ ansible_play_hosts_all }}"
+    run_once: true
   - name: call lib to convert bgp info from xml to dict format
     base_xml_to_dict:
-       cli_responses: "{{ item.stdout_show_bgp }}"
+      cli_responses: "{{ item.stdout_show_bgp }}"
     with_items:
       - "{{ output_bgp }}"
     register: show_bgp_list
+    run_once: true
   - name: call lib to convert ip interface info from xml to dict format
     base_xml_to_dict:
-       cli_responses: "{{ item.stdout_show_ip }}"
+      cli_responses: "{{ item.stdout_show_ip }}"
     with_items:
       - "{{ output_bgp }}"
     register: show_ip_intf_list
+    run_once: true
   - name: call lib for bgp validation
     bgp_validate:
       show_ip_bgp: "{{ show_bgp_list.results  }}"
       show_ip_intf_brief: "{{ show_ip_intf_list.results  }}"
       bgp_neighbors: "{{ intended_bgp_neighbors }}"
+      unreachable_hosts: "{{ output_bgp_failed }}"
+    register: bgp_validation
+    run_once: true
+  - name: "debug bgp database"
+    debug: var=bgp_validation.msg.results
+    run_once: true
+  - name: "debug failed host database"
+    debug: var=output_bgp_failed
+    when: output_bgp_failed is defined
+    run_once: true
 '''
 
 
@@ -80,6 +104,8 @@ class BgpValidation(object):
         self.show_ip_bgp = self.module.params['show_ip_bgp']
         self.show_ip_intf_brief = self.module.params['show_ip_intf_brief']
         self.bgp_neighbors = self.module.params['bgp_neighbors']
+        self.unreachable_hosts = self.module.params['unreachable_hosts']
+        self.unreachable_hosts_dict = OrderedDict()
         self.exit_msg = OrderedDict()
 
     def get_fields(self):
@@ -95,9 +121,21 @@ class BgpValidation(object):
             'bgp_neighbors': {
                 'type': 'list',
                 'required': True
+            },
+            'unreachable_hosts': {
+                'type': 'list',
+                'required': True
             }
         }
         return spec_fields
+
+    def parse_unreachable_hosts_list(self):
+        unreachable_host_dict={}
+        for host_dict in self.unreachable_hosts:
+            inv_name = host_dict.get("inv_name")
+            host = host_dict.get("host")
+            unreachable_host_dict[inv_name]=host
+        return unreachable_host_dict
 
     def parse_bgp_output(self):
         show_bgp_dict = {}
@@ -245,32 +283,39 @@ class BgpValidation(object):
             planned_source_switch = intended_bgp_neighbor.get("source_switch")
             planned_nbr_list = intended_bgp_neighbor.get("neighbor_ip")
             actual_nbr_list = actual_bgp_dict.get(planned_source_switch)
-            if planned_nbr_list is None or actual_nbr_list is None:
-                continue
-            for actual_nbr in actual_nbr_list:
-                actual_source_switch = actual_nbr.get("source_switch")
-                actual_bgp_neighbor = actual_nbr.get("bgp_neighbor")
-                actual_bgp_state = actual_nbr.get("bgp_state")
-                if actual_bgp_neighbor in planned_nbr_list:
-                    # Don't add established neighbor in result
-                    if actual_bgp_state != "established":
-                        intended_list.append(actual_nbr)
-                    planned_nbr_list.remove(actual_bgp_neighbor)
-                else:
-                    reason = "neighbor {} is not an intended, please add this neighbor in the intended_bgp_neighbors".format(
-                        actual_bgp_neighbor)
-                    actual_nbr["bgp_neighbor"] = "-"
-                    actual_nbr["error_type"] = "not_an_intended_neighbor"
-                    actual_nbr["possible_reason"] = reason
-                    intended_list.append(actual_nbr)
+            if planned_nbr_list is None:
+               continue
+            if actual_nbr_list is not None:
+               for actual_nbr in actual_nbr_list:
+                   actual_source_switch = actual_nbr.get("source_switch")
+                   actual_bgp_neighbor = actual_nbr.get("bgp_neighbor")
+                   actual_bgp_state = actual_nbr.get("bgp_state")
+                   if actual_bgp_neighbor in planned_nbr_list:
+                       # Don't add established neighbor in result
+                       if actual_bgp_state != "established":
+                           intended_list.append(actual_nbr)
+                       planned_nbr_list.remove(actual_bgp_neighbor)
+                   else:
+                       reason = "neighbor {} is not an intended, please add this neighbor in the intended_bgp_neighbors".format(
+                           actual_bgp_neighbor)
+                       actual_nbr["bgp_neighbor"] = "-"
+                       actual_nbr["error_type"] = "not_an_intended_neighbor"
+                       actual_nbr["possible_reason"] = reason
+                       intended_list.append(actual_nbr)
             # Add the missed planned info which are not present in actual
             # results
             for planned_nbr in planned_nbr_list:
-                reason = "neighbor config missing"
                 temp_dict = {}
+                if actual_nbr_list is None and planned_source_switch in self.unreachable_hosts_dict.keys():
+                   host = self.unreachable_hosts_dict.get(planned_source_switch)
+                   reason = "{}:{} is not reachable".format(
+                        planned_source_switch,host)
+                   temp_dict["error_type"] = "not_reachable"
+                else:
+                   reason = "neighbor config missing"
+                   temp_dict["error_type"] = "config_missing"
                 temp_dict["source_switch"] = planned_source_switch
                 temp_dict["bgp_neighbor"] = planned_nbr
-                temp_dict["error_type"] = "config_missing"
                 temp_dict["possible_reason"] = reason
                 intended_list.append(temp_dict)
         return intended_list
@@ -279,6 +324,7 @@ class BgpValidation(object):
         try:
             bgp_dict = self.parse_bgp_output()
             intf_dict = self.parse_ip_intf_output()
+            self.unreachable_hosts_dict = self.parse_unreachable_hosts_list()
             final_bgp_list = self.get_bgp_final_nbr_list(bgp_dict, intf_dict)
             self.exit_msg.update({"results": final_bgp_list})
             self.module.exit_json(changed=False, msg=self.exit_msg)

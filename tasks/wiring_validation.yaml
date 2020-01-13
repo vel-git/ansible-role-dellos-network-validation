@@ -3,13 +3,20 @@
   dellos10_command:
     commands:
       - command: "show lldp neighbors"
-    provider: "{{ hostvars[item].cli }}"
-  with_items: "{{ groups['all'] }}"
   register: show_lldp
 - name: "set facts to form lldp db"
   set_fact:
-    output_lldp: "{{ output_lldp|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_lldp': item.stdout}] }}"
-  loop: "{{ show_lldp.results }}"
+    output_lldp:
+      "{{ output_lldp|default([])+ [{'host': hostvars[item].cli.host,
+         'inv_name': item, 'stdout_show_lldp': hostvars[item].show_lldp.stdout.0}]
+         if(hostvars[item].show_lldp is defined and
+         hostvars[item].show_lldp.failed == false) else output_lldp|default([]) }}"
+    lldp_failed_host:
+      "{{ lldp_failed_host|default([])+ [{'inv_name': item,
+          'host': hostvars[item].ansible_host}] if(hostvars[item].show_lldp is not defined
+          or hostvars[item].show_lldp.failed == true) else lldp_failed_host|default([]) }}"
+  loop: "{{ ansible_play_hosts_all }}"
+  run_once: true
 - name: "Get Dell EMC OS10 Show system"
   import_role:
     name: ansible-role-dellos-fabric-summary
@@ -19,6 +26,13 @@
     show_lldp_neighbors_list: "{{ output_lldp }}"
     show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
     planned_neighbors: "{{ intended_neighbors }}"
+    unreachable_hosts: "{{ lldp_failed_host }}"
   register: wiring_validation
+  run_once: true
 - name: "debug the wiring validation results"
   debug: var=wiring_validation.msg.results
+  run_once: true
+- name: "debug the wiring validation failed host results"
+  debug: var=lldp_failed_host
+  when: lldp_failed_host is defined and (lldp_failed_host|length > 0)
+  run_once: true

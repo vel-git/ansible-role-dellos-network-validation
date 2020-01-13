@@ -31,56 +31,72 @@ options:
             - intended vlt pair intput to verify with actual
          type: 'list',
          required': True
+    unreachable_hosts:
+        description:
+            - unreahable hosts
+        type: 'list',
+       required: True
 
 '''
 EXAMPLES = '''
 Copy below YAML into a playbook (e.g. play.yml) and run as follows:
 
 $ ansible-playbook -i inv play.yml
-name: show system Configuration
-hosts: localhost
-connection: local
+name: vlt validation
+hosts: LeafAndSpineSwitch
+connection: network_cli
 gather_facts: False
 tasks:
- - name: "Get Dell EMC OS10 Show run vlt"
-   dellos10_command:
-     commands:
-       - command: "show running-configuration vlt | grep vlt-domain"
-     provider: "{{ hostvars[item].cli }}"
-   with_items: "{{ groups['all'] }}"
-   register: show_run_vlt
- - set_fact:
-      output_vlt:  "{{ output_vlt|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_vlt': item.stdout.0}] }}"
-   loop: "{{ show_run_vlt.results }}"
- - debug: var=output_vlt
- - name: "Get Dell EMC OS10 Show vlt info"
-   dellos10_command:
-     commands:
-       - command: "show vlt {{ item.stdout_show_vlt.split()[1] }} | display-xml"
-     provider: "{{ hostvars[item.inv_name].cli }}"
-   with_items: "{{ output_vlt }}"
-   register: show_vlt
- - set_fact:
-      vlt_out:  "{{ vlt_out|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'show_vlt_stdout': item.stdout.0}] }}"
-   loop: "{{ show_vlt.results }}"
-   register: vlt_output
- - name: call lib to convert vlt info from xml to dict format
-   base_xml_to_dict:
+  - name: "Get Dell EMC OS10 Show run vlt"
+    dellos10_command:
+      commands:
+        - command: "show running-configuration vlt | grep vlt-domain"
+    register: show_run_vlt
+  - name: "Get Dell EMC OS10 Show vlt info"
+    dellos10_command:
+      commands:
+        - command: "show vlt {{  show_run_vlt.stdout.0.split()[1] }} | display-xml"
+    register: show_vlt_out
+  - name: "set fact to form vlt database"
+    set_fact:
+      vlt_out:
+        "{{ vlt_out|default([])+ [{'host': hostvars[item].cli.host, 'inv_name': item,
+            'show_vlt_stdout': hostvars[item].show_vlt_out.stdout.0}]
+            if(hostvars[item].show_vlt_out is defined and
+            hostvars[item].show_vlt_out.failed == false) else vlt_out|default([]) }}"
+      vlt_failed_host:
+        "{{ vlt_failed_host|default([])+ [{'inv_name': item,
+            'host': hostvars[item].ansible_host}]
+            if(hostvars[item].show_vlt_out is not defined or
+            hostvars[item].show_vlt_out.failed == true) else vlt_failed_host|default([]) }}"
+    loop: "{{ ansible_play_hosts_all }}"
+    run_once: true
+  - name: call lib to convert vlt info from xml to dict format
+    base_xml_to_dict:
       cli_responses: "{{ item.show_vlt_stdout }}"
-   with_items:
-     - "{{ vlt_out }}"
-   register: vlt_dict_output
- - name: "Get Dell EMC OS10 Show system"
-   import_role:
-     name: ansible-role-dellos-fabric-summary
-   register: show_system_network_summary
- - name: call lib to process
-   vlt_validate:
-       show_vlt : "{{ vlt_dict_output.results }}"
-       show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
-       intended_vlt_pairs: "{{ intended_vlt_pairs }}"
-   register: show_vlt_info
-
+    with_items:
+      - "{{ vlt_out }}"
+    register: vlt_dict_output
+    run_once: true
+  - name: "Get Dell EMC OS10 Show system"
+    import_role:
+      name: ansible-role-dellos-fabric-summary
+    register: show_system_network_summary
+  - name: call lib to process
+    vlt_validate:
+      show_vlt: "{{ vlt_dict_output.results }}"
+      show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
+      intended_vlt_pairs: "{{ intended_vlt_pairs }}"
+      unreachable_hosts: "{{ vlt_failed_host }}"
+    register: show_vlt_info
+    run_once: true
+  - name: "debug vlt validation result"
+    debug: var=show_vlt_info.msg.results
+    run_once: true
+  - name: "debug vlt failed or unreachable host result"
+    debug: var=vlt_failed_host
+    when: vlt_failed_host is defined
+    run_once: true
 '''
 
 
@@ -90,6 +106,8 @@ class VltValidation(object):
         self.show_vlt = self.module.params['show_vlt']
         self.show_system_network_summary = self.module.params['show_system_network_summary']
         self.intended_vlt_pairs = self.module.params['intended_vlt_pairs']
+        self.unreachable_hosts = self.module.params['unreachable_hosts']
+        self.unreachable_hosts_dict = OrderedDict()
         self.exit_msg = OrderedDict()
 
     def get_fields(self):
@@ -105,9 +123,23 @@ class VltValidation(object):
             'intended_vlt_pairs': {
                 'type': 'list',
                 'required': True
+            },
+            'unreachable_hosts': {
+                'type': 'list',
+                'required': True
             }
         }
         return spec_fields
+
+
+    def parse_unreachable_hosts_list(self):
+        unreachable_host_dict={}
+        for host_dict in self.unreachable_hosts:
+            inv_name = host_dict.get("inv_name")
+            host = host_dict.get("host")
+            unreachable_host_dict[inv_name]=host
+        return unreachable_host_dict
+
 
     # get switch inv name from mac
     def get_switch_inv_name_from_mac(self, mac):
@@ -142,8 +174,14 @@ class VltValidation(object):
                     if actual_secondary is None:
                         temp_dict["intended_primary"] = intended_primary
                         temp_dict["intended_secondary"] = intended_secondary
-                        temp_dict["error_type"] = "peer_missing"
-                        reason = "peer info is not configured or peer interface is down"
+                        if intended_secondary in self.unreachable_hosts_dict.keys():
+                            host = self.unreachable_hosts_dict.get(intended_secondary)
+                            reason = "{}:{} is not reachable".format(
+                                      intended_secondary,host)
+                            temp_dict["error_type"] = "not_reachable"
+                        else:
+                            temp_dict["error_type"] = "peer_missing"
+                            reason = "peer info is not configured or peer interface is down"
                         temp_dict["possible_reason"] = reason
                         final_out.append(temp_dict)
                     elif intended_secondary == actual_secondary and secondary_status != "up":
@@ -157,8 +195,15 @@ class VltValidation(object):
             else:
                 temp_dict["intended_primary"] = intended_primary
                 temp_dict["intended_secondary"] = intended_secondary
-                temp_dict["error_type"] = "vlt_config_missing"
-                temp_dict["possible_reason"] = "vlt is not configured"
+                if intended_primary in self.unreachable_hosts_dict.keys():
+                    host = self.unreachable_hosts_dict.get(intended_primary)
+                    reason = "{}:{} is not reachable".format(
+                              intended_primary,host)
+                    temp_dict["error_type"] = "not_reachable"
+                else:
+                    temp_dict["error_type"] = "vlt_config_missing"
+                    reason = "vlt is not configured"
+                temp_dict["possible_reason"] = reason
                 final_out.append(temp_dict)
         return final_out
 
@@ -168,8 +213,7 @@ class VltValidation(object):
             source_switch = None
             item = show_list.get("item")
             if item is not None:
-                inv_info = item.get("inv_name")
-                source_switch = inv_info.get("inv_name")
+                source_switch = item.get("inv_name")
             msg = show_list.get("msg")
             if msg is not None:
                 result = msg.get("result")
@@ -211,6 +255,7 @@ class VltValidation(object):
     def perform_action(self):
         try:
             actual_vlt_dict = self.parse_vlt_output()
+            self.unreachable_hosts_dict = self.parse_unreachable_hosts_list()
             final_out = self.validate_vlt_pairs(actual_vlt_dict)
             self.exit_msg.update({"results": final_out})
             self.module.exit_json(changed=False, msg=self.exit_msg)

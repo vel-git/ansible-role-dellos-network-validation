@@ -3,33 +3,33 @@
   dellos10_command:
     commands:
       - command: "show running-configuration vlt | grep vlt-domain"
-    provider: "{{ hostvars[item].cli }}"
-  with_items: "{{ groups['all'] }}"
   register: show_run_vlt
-- name: "set fact to form show vlt database"
-  set_fact:
-    output_vlt: "{{ output_vlt|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_vlt': item.stdout.0}] }}"
-  loop: "{{ show_run_vlt.results }}"
-- name: "debug output_vlt"
-  debug: var=output_vlt
 - name: "Get Dell EMC OS10 Show vlt info"
   dellos10_command:
     commands:
-      - command: "show vlt {{ item.stdout_show_vlt.split()[1] }} | display-xml"
-    provider: "{{ hostvars[item.inv_name].cli }}"
-  with_items: "{{ output_vlt }}"
-  register: show_vlt
+      - command: "show vlt {{  show_run_vlt.stdout.0.split()[1] }} | display-xml"
+  register: show_vlt_out
 - name: "set fact to form vlt database"
   set_fact:
-    vlt_out: "{{ vlt_out|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'show_vlt_stdout': item.stdout.0}] }}"
-  loop: "{{ show_vlt.results }}"
-  register: vlt_output
+    vlt_out:
+      "{{ vlt_out|default([])+ [{'host': hostvars[item].cli.host, 'inv_name': item,
+          'show_vlt_stdout': hostvars[item].show_vlt_out.stdout.0}]
+          if(hostvars[item].show_vlt_out is defined and
+          hostvars[item].show_vlt_out.failed == false) else vlt_out|default([]) }}"
+    vlt_failed_host:
+      "{{ vlt_failed_host|default([])+ [{'inv_name': item,
+          'host': hostvars[item].ansible_host}]
+          if(hostvars[item].show_vlt_out is not defined or
+          hostvars[item].show_vlt_out.failed == true) else vlt_failed_host|default([]) }}"
+  loop: "{{ ansible_play_hosts_all }}"
+  run_once: true
 - name: call lib to convert vlt info from xml to dict format
   base_xml_to_dict:
     cli_responses: "{{ item.show_vlt_stdout }}"
   with_items:
     - "{{ vlt_out }}"
   register: vlt_dict_output
+  run_once: true
 - name: "Get Dell EMC OS10 Show system"
   import_role:
     name: ansible-role-dellos-fabric-summary
@@ -39,6 +39,13 @@
     show_vlt: "{{ vlt_dict_output.results }}"
     show_system_network_summary: "{{ show_system_network_summary.msg.results }}"
     intended_vlt_pairs: "{{ intended_vlt_pairs }}"
+    unreachable_hosts: "{{ vlt_failed_host }}"
   register: show_vlt_info
+  run_once: true
 - name: "debug vlt validation result"
   debug: var=show_vlt_info.msg.results
+  run_once: true
+- name: "debug vlt failed or unreachable host result"
+  debug: var=vlt_failed_host
+  when: vlt_failed_host is defined and (vlt_failed_host|length > 0)
+  run_once: true

@@ -4,30 +4,48 @@
     commands:
       - command: "show ip bgp summary | display-xml"
       - command: "show ip interface brief | display-xml"
-    provider: "{{ hostvars[item].cli }}"
-  with_items: "{{ groups['all'] }}"
   register: show_bgp
 - name: "set fact to form bgp database"
   set_fact:
-    output_bgp: "{{ output_bgp|default([])+ [{'host': item.invocation.module_args.provider.host, 'inv_name': item.item, 'stdout_show_bgp': item.stdout.0, 'stdout_show_ip': item.stdout.1}] }}"
-  loop: "{{ show_bgp.results }}"
+    output_bgp:
+      "{{ output_bgp|default([])+ [{'host': hostvars[item].cli.host, 'inv_name': item,
+          'stdout_show_bgp': hostvars[item].show_bgp.stdout.0,
+          'stdout_show_ip': hostvars[item].show_bgp.stdout.1}]
+          if(hostvars[item].show_bgp is defined and
+          hostvars[item].show_bgp.failed == false) else output_bgp|default([]) }}"
+    output_bgp_failed:
+      "{{ output_bgp_failed|default([])+ [{'inv_name': item,
+          'host': hostvars[item].ansible_host}]
+          if(hostvars[item].show_bgp is not defined or
+          hostvars[item].show_bgp.failed == true) else output_bgp_failed|default([])}}"
+  loop: "{{ ansible_play_hosts_all }}"
+  run_once: true
 - name: call lib to convert bgp info from xml to dict format
   base_xml_to_dict:
     cli_responses: "{{ item.stdout_show_bgp }}"
   with_items:
     - "{{ output_bgp }}"
   register: show_bgp_list
+  run_once: true
 - name: call lib to convert ip interface info from xml to dict format
   base_xml_to_dict:
     cli_responses: "{{ item.stdout_show_ip }}"
   with_items:
     - "{{ output_bgp }}"
   register: show_ip_intf_list
+  run_once: true
 - name: call lib for bgp validation
   bgp_validate:
     show_ip_bgp: "{{ show_bgp_list.results  }}"
     show_ip_intf_brief: "{{ show_ip_intf_list.results  }}"
     bgp_neighbors: "{{ intended_bgp_neighbors }}"
-  register: bgp_validation_output
+    unreachable_hosts: "{{ output_bgp_failed }}"
+  register: bgp_validation
+  run_once: true
 - name: "debug bgp database"
-  debug: var=bgp_validation_output.msg.results
+  debug: var=bgp_validation.msg.results
+  run_once: true
+- name: "debug failed host database"
+  debug: var=output_bgp_failed
+  when: output_bgp_failed is defined and (output_bgp_failed|length > 0)
+  run_once: true

@@ -154,9 +154,9 @@ This example uses the `dell-networking.dellos_network_validation` role to verify
 
 	---
         - name: setup network validation
-	  hosts: localhost
+	  hosts: LeafAndSpineSwitch
 	  gather_facts: no
-	  connection: local
+	  connection: network_cli
 	  roles:		
              - ansible-role-dellos-network-validation
 
@@ -164,9 +164,9 @@ This example uses the `dell-networking.dellos_network_validation` role to verify
 
         ---
         - name: setup wiring validation
-          hosts: localhost
+          hosts: LeafAndSpineSwitch
           gather_facts: False
-          connection: local
+          connection: network_cli
           tasks:
             - import_role:
                 name: ansible-role-dellos-network-validation
@@ -176,9 +176,9 @@ This example uses the `dell-networking.dellos_network_validation` role to verify
 
         ---
         - name: setup bgp validation
-          hosts: localhost
+          hosts: LeafAndSpineSwitch
           gather_facts: False
-          connection: local
+          connection: network_cli
           tasks:
             - import_role:
                 name: ansible-role-dellos-network-validation
@@ -188,9 +188,9 @@ This example uses the `dell-networking.dellos_network_validation` role to verify
 
         ---
         - name: setup vlt validation
-          hosts: localhost
+          hosts: LeafAndSpineSwitch
           gather_facts: False
-          connection: local
+          connection: network_cli
           tasks:
             - import_role:
                 name: ansible-role-dellos-network-validation
@@ -200,9 +200,9 @@ This example uses the `dell-networking.dellos_network_validation` role to verify
 
         ---
         - name: setup mtu validation
-          hosts: localhost
+          hosts: LeafAndSpineSwitch
           gather_facts: False
-          connection: local
+          connection: network_cli
           tasks:
             - import_role:
                 name: ansible-role-dellos-network-validation
